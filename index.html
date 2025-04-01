@@ -5,8 +5,8 @@
   <meta name="viewport"
         content="width=device-width, initial-scale=1.0,
                  maximum-scale=1.0,
-                 user-scalable=no" />
-  <title>카메라 정보 및 손가락 보기</title>
+                 user-scalable=no"/>
+  <title>카메라 정보 손꾸락 2 보기</title>
   <style>
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -15,19 +15,19 @@
       background-color: #f5f5f5;
       overscroll-behavior: none; /* 안드로이드에서 Pull-to-refresh 비활성화 */
     }
-
+    
     .container {
       max-width: 800px;
       margin: 0 auto;
       padding: 20px;
     }
-
+    
     h1 {
       color: #2c3e50;
       text-align: center;
       margin-bottom: 20px;
     }
-
+    
     .content-box {
       background-color: white;
       border-radius: 8px;
@@ -35,7 +35,7 @@
       padding: 20px;
       margin-bottom: 20px;
     }
-
+    
     .video-container {
       width: 100%;
       position: relative;   /* 자식 요소를 절대 위치로 배치하기 위해 relative 설정 */
@@ -43,7 +43,7 @@
       border-radius: 8px;
       margin-bottom: 20px;
     }
-
+    
     video {
       width: 100%;
       background-color: #000;
@@ -53,14 +53,13 @@
 
     /* 손 추적용 캔버스 */
     #handsCanvas {
-      position: absolute; 
+      position: absolute;
       top: 0;
       left: 0;
-      /* 아래 속성들은 투명 배경으로 만들고, 클릭 안 되게 하기 위한 것 */
-      pointer-events: none; 
-      background-color: transparent; 
+      pointer-events: none; /* 클릭 이벤트가 비디오로 전달되도록 */
+      background-color: transparent;
     }
-
+    
     .btn {
       background-color: #3498db;
       color: white;
@@ -73,50 +72,50 @@
       margin-bottom: 10px;
       -webkit-tap-highlight-color: transparent;
     }
-
+    
     .btn:hover {
       background-color: #2980b9;
     }
-
+    
     .btn-danger {
       background-color: #e74c3c;
     }
-
+    
     .btn-danger:hover {
       background-color: #c0392b;
     }
-
+    
     .info-list {
       list-style-type: none;
       padding: 0;
     }
-
+    
     .info-list li {
       padding: 10px;
       border-bottom: 1px solid #eee;
     }
-
+    
     .info-list li:last-child {
       border-bottom: none;
     }
-
+    
     .info-label {
       font-weight: bold;
       color: #3498db;
       display: inline-block;
       width: 180px;
     }
-
+    
     .status-message {
       color: #e74c3c;
       font-weight: bold;
       margin: 10px 0;
     }
-
+    
     .camera-options {
       margin-top: 15px;
     }
-
+    
     select {
       padding: 8px;
       border-radius: 4px;
@@ -158,9 +157,7 @@
     <div class="content-box">
       <h2>카메라 미리보기</h2>
       <div class="video-container" id="videoContainer">
-        <!-- 실시간 영상 -->
         <video id="video" autoplay playsinline></video>
-        <!-- Mediapipe 손추적용 캔버스 (동일 크기로 오버레이) -->
         <canvas id="handsCanvas"></canvas>
       </div>
     </div>
@@ -174,7 +171,6 @@
   </div>
 
   <!-- Mediapipe Hands 관련 스크립트 (CDN) -->
-  <!-- (네트워크 상황에 따라 경로를 바꾸어 사용 가능) -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.min.js"></script>
@@ -186,18 +182,17 @@
     let currentCamera = null;
     let availableCameras = [];
 
-    // 손 추적용 Mediapipe 관련 객체 및 변수
-    let hands = null;                // Hands 객체
-    let handsCanvas = null;          // 손 랜드마크 표시용 캔버스
-    let handsCtx = null;             // 손 랜드마크 표시용 캔버스 컨텍스트
-    let requestId = 0;               // requestAnimationFrame 아이디
+    // 손 추적용 Mediapipe 관련
+    let hands = null;
+    let handsCanvas = null;
+    let handsCtx = null;
+    let requestId = 0; // requestAnimationFrame ID
 
     // DOM 요소
     let startBtn, stopBtn, switchBtn, cameraSelect, resolutionSelect, statusMessage, cameraInfoList;
 
     // 문서 로드 완료 시 초기화
     document.addEventListener('DOMContentLoaded', () => {
-      // DOM 요소 참조 가져오기
       video = document.getElementById('video');
       startBtn = document.getElementById('startBtn');
       stopBtn = document.getElementById('stopBtn');
@@ -207,84 +202,78 @@
       statusMessage = document.getElementById('statusMessage');
       cameraInfoList = document.getElementById('cameraInfoList');
       
-      // 손추적용 캔버스
       handsCanvas = document.getElementById('handsCanvas');
       handsCtx = handsCanvas.getContext('2d');
 
-      // 이벤트 리스너 설정
       startBtn.addEventListener('click', startCamera);
       stopBtn.addEventListener('click', stopCamera);
       switchBtn.addEventListener('click', switchCamera);
       cameraSelect.addEventListener('change', handleCameraChange);
       resolutionSelect.addEventListener('change', applyResolutionChange);
 
-      // 화면 방향/크기 변경 감지
       window.addEventListener('resize', handleScreenResize);
       window.addEventListener('orientationchange', handleOrientationChange);
 
-      // 사용 가능한 카메라 목록 가져오기
+      // 카메라 목록 가져오기
       enumerateDevices();
 
       // Mediapipe Hands 초기화
       initMediapipeHands();
     });
 
-    // ==================== (1) Mediapipe Hands 초기화 함수 ====================
+    // ==================== (1) Mediapipe Hands 초기화 ====================
     function initMediapipeHands() {
       hands = new Hands({
         locateFile: (file) => {
-          // CDN 경로 지정 (기본 예시)
           return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
         }
       });
       hands.setOptions({
-        maxNumHands: 2,                  // 최대 탐지 손 개수
-        minDetectionConfidence: 0.5,     // 탐지 정확도 임계치
-        minTrackingConfidence: 0.5       // 추적 정확도 임계치
+        maxNumHands: 2,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
       });
-      hands.onResults(onResultsHands);   // 결과 콜백
+      hands.onResults(onResultsHands);
     }
 
-    // Mediapipe 결과 처리 콜백
+    // (검지: index finger) 랜드마크 인덱스 [5,6,7,8]
+    const indexFingerIndices = [5, 6, 7, 8];
+
+    // ==================== (2) Mediapipe 결과 처리 ====================
     function onResultsHands(results) {
-      // handsCanvas의 크기 = 비디오(실제로는 videoContainer) 영역 크기와 동일하게
       const width = handsCanvas.width;
       const height = handsCanvas.height;
 
       // 캔버스 초기화
       handsCtx.clearRect(0, 0, width, height);
 
-      // 손을 찾은 경우
+      // 손을 찾았다면
       if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         // 여러 손에 대해 반복
-        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
-          const landmarks = results.multiHandLandmarks[i];
+        for (let handLandmarks of results.multiHandLandmarks) {
+          // "검지" 5,6,7,8번 랜드마크에만 빨간 원 표시
+          indexFingerIndices.forEach(idx => {
+            const x = handLandmarks[idx].x * width;
+            const y = handLandmarks[idx].y * height;
 
-          // 손가락 연결선 그리기
-          window.drawConnectors(handsCtx, landmarks, window.HAND_CONNECTIONS, {
-            color: '#00FF00',
-            lineWidth: 2
-          });
-
-          // 각 랜드마크(관절 포인트) 그리기
-          window.drawLandmarks(handsCtx, landmarks, {
-            color: '#FF0000',
-            lineWidth: 2
+            // 빨간색 원 그리기
+            handsCtx.beginPath();
+            handsCtx.arc(x, y, 7, 0, 2 * Math.PI);
+            handsCtx.fillStyle = 'red';
+            handsCtx.fill();
           });
         }
       }
     }
 
-    // ==================== (2) 카메라 장치 열거 ====================
+    // ==================== (3) 장치 열거 ====================
     async function enumerateDevices() {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
         availableCameras = devices.filter(device => device.kind === 'videoinput');
         
-        // 카메라 선택 드롭다운 업데이트
         updateCameraSelectOptions();
         
-        // 카메라가 하나라도 있는지 확인
         if (availableCameras.length === 0) {
           statusMessage.textContent = '감지된 카메라가 없습니다.';
           startBtn.disabled = true;
@@ -297,12 +286,9 @@
       }
     }
 
-    // 카메라 선택 드롭다운 업데이트
     function updateCameraSelectOptions() {
-      // 기존 옵션 제거
       cameraSelect.innerHTML = '';
       
-      // 카메라 목록이 비어있는 경우
       if (availableCameras.length === 0) {
         const option = document.createElement('option');
         option.value = '';
@@ -312,34 +298,22 @@
         return;
       }
       
-      // 각 카메라에 대한 옵션 추가
       availableCameras.forEach((camera, index) => {
         const option = document.createElement('option');
         option.value = camera.deviceId;
-        
-        // 카메라 레이블이 있으면 사용, 없으면 기본 이름 사용
-        if (camera.label) {
-          option.textContent = camera.label;
-        } else {
-          option.textContent = `카메라 ${index + 1}`;
-        }
-        
+        option.textContent = camera.label || `카메라 ${index + 1}`;
         cameraSelect.appendChild(option);
       });
       
       cameraSelect.disabled = false;
     }
 
-    // ==================== (3) 카메라 시작 / 중지 / 전환 ====================
+    // ==================== (4) 카메라 제어 함수 ====================
     async function startCamera() {
       try {
-        // 현재 선택된 해상도 가져오기
         const [width, height] = resolutionSelect.value.split('x').map(Number);
-        
-        // 사용할 카메라 결정 (선택된 것 또는 첫 번째 것)
         const cameraId = cameraSelect.value || (availableCameras.length > 0 ? availableCameras[0].deviceId : null);
-        
-        // 카메라 제약 조건 설정
+
         const constraints = {
           video: {
             deviceId: cameraId ? { exact: cameraId } : undefined,
@@ -348,38 +322,27 @@
           },
           audio: false
         };
-        
-        // 이미 실행 중인 스트림이 있으면 중지
+
         if (mediaStream) {
           stopCamera();
         }
-        
-        // 상태 메시지 업데이트
+
         statusMessage.textContent = '카메라 시작 중...';
-        
-        // 미디어 스트림 요청
         mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-        
-        // 비디오 요소에 스트림 연결
         video.srcObject = mediaStream;
-        
-        // 현재 활성 카메라 추적
         currentCamera = cameraId;
-        
-        // 버튼 상태 업데이트
+
         startBtn.disabled = true;
         stopBtn.disabled = false;
-        switchBtn.disabled = availableCameras.length < 2;
+        switchBtn.disabled = (availableCameras.length < 2);
         cameraSelect.disabled = false;
         
-        // 캔버스 크기 설정 (비디오 해상도와 동일하게)
+        // 손캔버스 해상도 지정
         handsCanvas.width = width;
         handsCanvas.height = height;
 
-        // 카메라 정보 업데이트 및 표시
         await updateCameraInfo();
-        
-        // 레이블이 없는 경우 장치 열거를 다시 수행 (권한 부여 후 레이블이 채워짐)
+
         if (availableCameras.some(camera => !camera.label)) {
           await enumerateDevices();
         }
@@ -396,25 +359,17 @@
 
     function stopCamera() {
       if (mediaStream) {
-        // 모든 트랙 중지
         mediaStream.getTracks().forEach(track => track.stop());
         mediaStream = null;
-        
-        // 비디오 요소에서 스트림 제거
         video.srcObject = null;
-        
-        // 버튼 상태 업데이트
+
         startBtn.disabled = false;
         stopBtn.disabled = true;
         switchBtn.disabled = true;
-        
-        // 상태 메시지 업데이트
         statusMessage.textContent = '카메라가 중지되었습니다.';
-        
-        // 카메라 정보 초기화
         cameraInfoList.innerHTML = '<li><span class="info-label">상태:</span> 카메라가 시작되지 않았습니다</li>';
 
-        // 실시간 손 추적 루프 중지
+        // 손 추적 루프 중지
         cancelAnimationFrame(requestId);
       }
     }
@@ -424,54 +379,44 @@
         statusMessage.textContent = '전환할 카메라가 없습니다.';
         return;
       }
-      
-      // 현재 카메라 인덱스 찾기
       const currentIndex = availableCameras.findIndex(camera => camera.deviceId === currentCamera);
-      
-      // 다음 카메라 인덱스 계산 (마지막이면 처음으로 돌아감)
       const nextIndex = (currentIndex + 1) % availableCameras.length;
-      
-      // 선택 드롭다운 업데이트
       cameraSelect.value = availableCameras[nextIndex].deviceId;
-      
-      // 새 카메라 시작
       await startCamera();
     }
 
-    // ==================== (4) 해상도 변경 / 카메라 드롭다운 변경 ====================
+    // ==================== (5) 카메라 선택/해상도 변경 ====================
     async function handleCameraChange() {
       if (mediaStream) {
-        await startCamera(); // 선택한 카메라로 다시 시작
-      }
-    }
-    
-    async function applyResolutionChange() {
-      if (mediaStream) {
-        await startCamera(); // 새 해상도로 다시 시작
+        await startCamera();
       }
     }
 
-    // ==================== (5) 핸드 트래킹 루프 ====================
+    async function applyResolutionChange() {
+      if (mediaStream) {
+        await startCamera();
+      }
+    }
+
+    // ==================== (6) 실시간 손 추적 루프 ====================
     function startHandTrackingLoop() {
-      // 매 프레임마다 hands.send() 호출 -> onResultsHands()에서 랜드마크 그림
       function onFrame() {
         if (!video.paused && !video.ended) {
-          hands.send({ image: video });  // Mediapipe Hands에 현재 프레임 전달
+          // 현재 영상 프레임을 Mediapipe Hands에 전달
+          hands.send({ image: video });
         }
         requestId = requestAnimationFrame(onFrame);
       }
       requestId = requestAnimationFrame(onFrame);
     }
 
-    // ==================== (6) 화면 크기/방향 변경 처리 ====================
+    // ==================== (7) 화면 크기/방향 처리 ====================
     function handleScreenResize() {
-      // videoContainer 크기와 handsCanvas 크기를 맞춰줍니다.
       const container = document.getElementById('videoContainer');
-      // 현재 videoContainer의 실제 표시 영역 크기
       const width = container.clientWidth;
       const height = container.clientHeight;
 
-      // handsCanvas도 동일 크기로 적용
+      // 표시 영역에 맞춰서 canvas CSS 크기 조정
       handsCanvas.style.width = width + 'px';
       handsCanvas.style.height = height + 'px';
     }
@@ -480,16 +425,11 @@
       setTimeout(handleScreenResize, 300);
     }
 
-    // ==================== (7) 카메라 상세 정보 업데이트 ====================
+    // ==================== (8) 카메라 정보 업데이트 ====================
     async function updateCameraInfo() {
-      if (!mediaStream) {
-        return;
-      }
+      if (!mediaStream) return;
       
-      // 정보 목록 초기화
       cameraInfoList.innerHTML = '';
-      
-      // 현재 트랙 가져오기
       const videoTrack = mediaStream.getVideoTracks()[0];
       
       if (!videoTrack) {
@@ -497,28 +437,21 @@
         return;
       }
       
-      // 기본 트랙 정보
       addInfoItem('상태', '활성');
       addInfoItem('장치 이름', videoTrack.label || '알 수 없음');
       addInfoItem('트랙 ID', videoTrack.id);
       addInfoItem('활성 상태', videoTrack.enabled ? '활성화됨' : '비활성화됨');
       addInfoItem('준비 상태', videoTrack.readyState);
       
-      // 제약 조건 가져오기
       const constraints = videoTrack.getConstraints();
       const settings = videoTrack.getSettings();
       
-      // 현재 해상도
       if (settings.width && settings.height) {
         addInfoItem('현재 해상도', `${settings.width} × ${settings.height} 픽셀`);
       }
-      
-      // 프레임 레이트
       if (settings.frameRate) {
         addInfoItem('프레임 레이트', `${settings.frameRate.toFixed(1)} fps`);
       }
-      
-      // 카메라 방향
       if (settings.facingMode) {
         let facingModeText = '알 수 없음';
         switch (settings.facingMode) {
@@ -526,26 +459,23 @@
           case 'environment': facingModeText = '후면 카메라'; break;
           case 'left': facingModeText = '왼쪽 카메라'; break;
           case 'right': facingModeText = '오른쪽 카메라'; break;
-          default: facingModeText = settings.facingMode;
         }
         addInfoItem('카메라 방향', facingModeText);
       }
       
-      // 기기 ID
       if (settings.deviceId) {
         const shortDeviceId = settings.deviceId.substring(0, 8) + '...';
         addInfoItem('장치 ID', shortDeviceId);
       }
       
-      // 추가 설정 정보
-      if (settings.aspectRatio) {
+      if (settings.aspectRatio !== undefined) {
         addInfoItem('종횡비', settings.aspectRatio.toFixed(2));
       }
       if (settings.brightness !== undefined) {
         addInfoItem('밝기', settings.brightness);
       }
       if (settings.colorTemperature !== undefined) {
-        addInfoItem('색 온도', settings.colorTemperature + ' K');
+        addInfoItem('색 온도', settings.colorTemperature + 'K');
       }
       if (settings.contrast !== undefined) {
         addInfoItem('대비', settings.contrast);
@@ -563,11 +493,9 @@
         addInfoItem('초점 거리', settings.focusDistance);
       }
       
-      // 날짜와 시간 추가
       addInfoItem('업데이트 시간', new Date().toLocaleString());
     }
     
-    // 정보 항목 추가 도우미 함수
     function addInfoItem(label, value) {
       const li = document.createElement('li');
       const labelSpan = document.createElement('span');
