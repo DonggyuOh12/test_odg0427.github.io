@@ -2,12 +2,16 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>실시간 손가락 추적 (최적화 버전)</title>
+  <meta name="viewport" 
+        content="width=device-width, initial-scale=1.0,
+                 maximum-scale=1.0,
+                 user-scalable=no"/>
+  <title>실시간 손가락 추적 (반응형 v2)</title>
   <!-- MediaPipe Hands 라이브러리 -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3/drawing_utils.min.js"></script>
+
   <style>
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -24,18 +28,35 @@
       color: #2c3e50;
       margin-bottom: 20px;
     }
+
+    /* 비디오와 캔버스를 겹쳐서 반응형으로 표시하기 위한 컨테이너 */
     .video-container {
-      width: 100%;
       position: relative;
-      display: inline-block;
+      width: 100%;
+      max-width: 640px; /* 최대 폭 640px */
+      margin: 0 auto;   /* 가운데 정렬 */
     }
-    /* 해상도를 480x360으로 설정 예시 (더 줄이고 싶다면 320x240 등 사용) */
-    video, canvas {
-      width: 480px;
-      height: 360px;
-      border-radius: 5px;
+
+    /* 실제 영상은 너비 100%, 높이는 비율에 맞춰 자동조절 */
+    video {
+      width: 100%;
+      height: auto;
+      display: block;
       background-color: #000;
+      border-radius: 5px;
     }
+
+    /* 추적 결과 표시용 캔버스도 같은 위치에 겹치게 (absolute) */
+    #handCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      /* width/height를 100%로 -> 부모(video-container)의 크기만큼 자동 확장 */
+      width: 100%;
+      height: 100%;
+      pointer-events: none; /* 터치나 클릭이 아래로 통과되게 함 */
+    }
+
     .status-indicator {
       position: absolute;
       top: 10px;
@@ -63,12 +84,14 @@
     }
   </style>
 </head>
+
 <body>
   <div class="container">
-    <h1>실시간 손가락 추적 (최적화)</h1>
+    <h1>실시간 손가락 추적 (반응형 & 겹침 해결)</h1>
+
     <div class="video-container">
       <video id="video" autoplay playsinline></video>
-      <canvas id="handCanvas" style="position: absolute; top: 0; left: 0;"></canvas>
+      <canvas id="handCanvas"></canvas>
 
       <!-- 모델 로딩 표시 영역 -->
       <div id="statusIndicator" class="status-indicator">
@@ -102,9 +125,9 @@
 
     /********************************************************
      * MediaPipe Hands 초기화 및 카메라 시작
-     *  - modelComplexity: 0 => 가장 빠른 모델
-     *  - maxNumHands: 1 => 한 손만 추적 => 연산량 감소
-     *  - 해상도: 480 x 360
+     *  - 성능 최적화를 위해 modelComplexity=0 (가장 빠름)
+     *  - maxNumHands=1 한 손만 추적
+     *  - 내부 해상도(고정): 640x480
      ********************************************************/
     async function setupMediapipeHands() {
       hands = new window.Hands({
@@ -115,56 +138,59 @@
 
       hands.setOptions({
         maxNumHands: 1,
-        modelComplexity: 0,  // 0 = 빠름, 1 = 중간, 2 = 정확 but 느림
+        modelComplexity: 0,  // 0 = 빠른, 1 = 중간, 2 = 정확 but 느림
         minDetectionConfidence: 0.5,
         minTrackingConfidence: 0.5
       });
 
       hands.onResults(onHandResults);
 
-      // 해상도를 480x360으로 설정
       camera = new window.Camera(video, {
         onFrame: async () => {
           await hands.send({ image: video });
         },
-        width: 480,
-        height: 360
+        width: 640,  // 내부 해상도(고정)
+        height: 480
       });
 
       await camera.start();
 
-      // Canvas 크기도 동일하게
-      handCanvas.width = 480;
-      handCanvas.height = 360;
+      // 캔버스의 실제 픽셀 크기는 640x480으로 설정 (비디오와 동일)
+      handCanvas.width = 640;
+      handCanvas.height = 480;
     }
 
     /********************************************************
      * 손 인식 결과 처리 (렌더링)
+     *  - 실제로는 640x480에 그리지만
+     *  - CSS에서 width=100%로 맞춰서 화면에 표시
      ********************************************************/
     function onHandResults(results) {
-      // 원본 영상 캔버스에 그리기
+      // 1) 내부 캔버스(640x480) 초기화
       handCtx.clearRect(0, 0, handCanvas.width, handCanvas.height);
+
+      // 2) 영상 그리기
       handCtx.drawImage(video, 0, 0, handCanvas.width, handCanvas.height);
 
+      // 3) 손가락 랜드마크 표식
       if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         for (const landmarks of results.multiHandLandmarks) {
-          // (옵션) 연결선: 필요 없으면 주석 처리해 조금 더 빠르게
+          // 연결선 (옵션: 꼭 필요한 경우에만)
           window.drawConnectors(handCtx, landmarks, window.HAND_CONNECTIONS, {
             color: '#FFFFFF',
             lineWidth: 2
           });
-
-          // (옵션) 관절 포인트
+          // 관절 포인트
           window.drawLandmarks(handCtx, landmarks, {
             color: '#FF0000',
             lineWidth: 1,
-            radius: 2   // 필요하면 더 작게/크게 조정
+            radius: 2
           });
 
-          // 검지 손가락 끝 (랜드마크 index: 8) 표시 (조금 크게)
-          const indexFingerTip = landmarks[8];
-          const x = indexFingerTip.x * handCanvas.width;
-          const y = indexFingerTip.y * handCanvas.height;
+          // 예: 검지 손가락 끝 (랜드마크 index: 8)에 큰 원
+          const indexTip = landmarks[8];
+          const x = indexTip.x * handCanvas.width;
+          const y = indexTip.y * handCanvas.height;
 
           handCtx.beginPath();
           handCtx.arc(x, y, 8, 0, 2 * Math.PI);
