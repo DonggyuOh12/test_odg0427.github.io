@@ -6,9 +6,10 @@
         content="width=device-width, initial-scale=1.0,
                  maximum-scale=1.0,
                  user-scalable=no"/>
-  <title>실시간 손가락 추적 (반응형 v2)</title>
-  <!-- MediaPipe Hands 라이브러리 -->
+  <title>손가락 인식 & 고양이 수염 필터</title>
+  <!-- MediaPipe 라이브러리 -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3/drawing_utils.min.js"></script>
 
@@ -26,7 +27,34 @@
     }
     h1 {
       color: #2c3e50;
-      margin-bottom: 20px;
+      margin-bottom: 10px;
+    }
+    
+    /* 모드 선택 버튼 */
+    .mode-buttons {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 15px;
+      gap: 10px;
+    }
+    
+    .mode-btn {
+      background-color: #3498db;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background-color 0.3s;
+    }
+    
+    .mode-btn:hover {
+      background-color: #2980b9;
+    }
+    
+    .mode-btn.active {
+      background-color: #e74c3c;
     }
 
     /* 비디오와 캔버스를 겹쳐서 반응형으로 표시하기 위한 컨테이너 */
@@ -47,7 +75,7 @@
     }
 
     /* 추적 결과 표시용 캔버스도 같은 위치에 겹치게 (absolute) */
-    #handCanvas {
+    #outputCanvas {
       position: absolute;
       top: 0;
       left: 0;
@@ -87,11 +115,17 @@
 
 <body>
   <div class="container">
-    <h1>실시간 손가락 추적</h1>
+    <h1>손가락 인식 & 고양이 수염 필터</h1>
+    
+    <!-- 모드 선택 버튼 -->
+    <div class="mode-buttons">
+      <button id="handModeBtn" class="mode-btn active">손가락 인식 모드</button>
+      <button id="catModeBtn" class="mode-btn">고양이 수염 모드</button>
+    </div>
 
     <div class="video-container">
       <video id="video" autoplay playsinline></video>
-      <canvas id="handCanvas"></canvas>
+      <canvas id="outputCanvas"></canvas>
 
       <!-- 모델 로딩 표시 영역 -->
       <div id="statusIndicator" class="status-indicator">
@@ -102,34 +136,97 @@
   </div>
 
   <script>
-    let video, handCanvas, handCtx;
-    let hands, camera;
+    // 전역 변수 정의
+    let video, outputCanvas, outputCtx;
+    let hands, faceMesh, camera;
+    let currentMode = 'hand'; // 'hand' 또는 'cat'
+    
+    // 모드 버튼 요소
+    let handModeBtn, catModeBtn;
+    
+    // 모델 로딩 상태
+    let isHandModelLoaded = false;
+    let isFaceModelLoaded = false;
 
     document.addEventListener('DOMContentLoaded', async () => {
+      // 요소 초기화
       video = document.getElementById('video');
-      handCanvas = document.getElementById('handCanvas');
-      handCtx = handCanvas.getContext('2d');
+      outputCanvas = document.getElementById('outputCanvas');
+      outputCtx = outputCanvas.getContext('2d');
+      
+      handModeBtn = document.getElementById('handModeBtn');
+      catModeBtn = document.getElementById('catModeBtn');
+      
+      // 버튼 이벤트 리스너 등록
+      handModeBtn.addEventListener('click', () => switchMode('hand'));
+      catModeBtn.addEventListener('click', () => switchMode('cat'));
 
       try {
+        // 초기 모델 로드 (손가락 인식)
         await setupMediapipeHands();
-        document.getElementById('statusText').textContent = '모델 로드 완료';
-        setTimeout(() => {
-          document.getElementById('statusIndicator').style.display = 'none';
-        }, 1500);
+        // 기본 모드로 시작
+        switchMode('hand');
       } catch (error) {
-        console.error("MediaPipe 모델 로드 오류:", error);
+        console.error("초기 모델 로드 오류:", error);
         document.getElementById('statusText').textContent = '모델 로드 실패';
         document.getElementById('loadingIndicator').style.display = 'none';
       }
     });
+    
+    // 모드 전환 함수
+    async function switchMode(mode) {
+      if (mode === currentMode) return; // 이미 같은 모드면 무시
+      
+      currentMode = mode;
+      
+      // 버튼 상태 업데이트
+      if (mode === 'hand') {
+        handModeBtn.classList.add('active');
+        catModeBtn.classList.remove('active');
+        
+        // 손가락 모델이 로드되지 않았으면 로드
+        if (!isHandModelLoaded) {
+          updateStatus('손가락 모델 로딩 중...');
+          await setupMediapipeHands();
+        } else {
+          // 이미 로드된 경우 활성화
+          activateHandMode();
+        }
+      } else {
+        // 고양이 모드
+        handModeBtn.classList.remove('active');
+        catModeBtn.classList.add('active');
+        
+        // 얼굴 모델이 로드되지 않았으면 로드
+        if (!isFaceModelLoaded) {
+          updateStatus('얼굴 모델 로딩 중...');
+          await setupMediapipeFaceMesh();
+        } else {
+          // 이미 로드된 경우 활성화
+          activateCatMode();
+        }
+      }
+    }
+    
+    // 상태 표시 업데이트 함수
+    function updateStatus(message, autoHide = false) {
+      document.getElementById('statusText').textContent = message;
+      document.getElementById('statusIndicator').style.display = 'block';
+      document.getElementById('loadingIndicator').style.display = 'inline-block';
+      
+      if (autoHide) {
+        setTimeout(() => {
+          document.getElementById('statusIndicator').style.display = 'none';
+        }, 1500);
+      }
+    }
 
     /********************************************************
-     * MediaPipe Hands 초기화 및 카메라 시작
-     *  - 성능 최적화를 위해 modelComplexity=0 (가장 빠름)
-     *  - maxNumHands=1 한 손만 추적
-     *  - 내부 해상도(고정): 640x480
+     * MediaPipe Hands 초기화 및 설정
      ********************************************************/
     async function setupMediapipeHands() {
+      if (isHandModelLoaded) return; // 이미 로드되었으면 스킵
+      
       hands = new window.Hands({
         locateFile: (file) => {
           return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`;
@@ -144,10 +241,67 @@
       });
 
       hands.onResults(onHandResults);
+      
+      // 카메라가 없으면 시작
+      if (!camera) {
+        await startCamera();
+      }
+      
+      isHandModelLoaded = true;
+      updateStatus('손가락 모델 로드 완료', true);
+      
+      // 현재 모드가 손가락이면 활성화
+      if (currentMode === 'hand') {
+        activateHandMode();
+      }
+    }
+    
+    /********************************************************
+     * MediaPipe FaceMesh 초기화 및 설정
+     ********************************************************/
+    async function setupMediapipeFaceMesh() {
+      if (isFaceModelLoaded) return; // 이미 로드되었으면 스킵
+      
+      faceMesh = new window.FaceMesh({
+        locateFile: (file) => {
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/${file}`;
+        }
+      });
 
+      faceMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: false,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+
+      faceMesh.onResults(onFaceResults);
+      
+      // 카메라가 없으면 시작
+      if (!camera) {
+        await startCamera();
+      }
+      
+      isFaceModelLoaded = true;
+      updateStatus('얼굴 모델 로드 완료', true);
+      
+      // 현재 모드가 고양이면 활성화
+      if (currentMode === 'cat') {
+        activateCatMode();
+      }
+    }
+    
+    /********************************************************
+     * 카메라 시작 및 캔버스 설정
+     ********************************************************/
+    async function startCamera() {
       camera = new window.Camera(video, {
         onFrame: async () => {
-          await hands.send({ image: video });
+          if (currentMode === 'hand' && isHandModelLoaded) {
+            await hands.send({ image: video });
+          } else if (currentMode === 'cat' && isFaceModelLoaded) {
+            await faceMesh.send({ image: video });
+          }
         },
         width: 640,  // 내부 해상도(고정)
         height: 480
@@ -156,51 +310,196 @@
       await camera.start();
 
       // 캔버스의 실제 픽셀 크기는 640x480으로 설정 (비디오와 동일)
-      handCanvas.width = 640;
-      handCanvas.height = 480;
+      outputCanvas.width = 640;
+      outputCanvas.height = 480;
+    }
+    
+    /********************************************************
+     * 손가락 모드 활성화
+     ********************************************************/
+    function activateHandMode() {
+      // 캔버스 초기화
+      outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+      
+      // 카메라 프레임 처리 함수 변경
+      camera.setOptions({
+        onFrame: async () => {
+          await hands.send({ image: video });
+        }
+      });
+    }
+    
+    /********************************************************
+     * 고양이 모드 활성화
+     ********************************************************/
+    function activateCatMode() {
+      // 캔버스 초기화
+      outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+      
+      // 카메라 프레임 처리 함수 변경
+      camera.setOptions({
+        onFrame: async () => {
+          await faceMesh.send({ image: video });
+        }
+      });
     }
 
     /********************************************************
      * 손 인식 결과 처리 (렌더링)
-     *  - 실제로는 640x480에 그리지만
-     *  - CSS에서 width=100%로 맞춰서 화면에 표시
      ********************************************************/
     function onHandResults(results) {
+      // 현재 모드가 손가락이 아니면 무시
+      if (currentMode !== 'hand') return;
+      
       // 1) 내부 캔버스(640x480) 초기화
-      handCtx.clearRect(0, 0, handCanvas.width, handCanvas.height);
+      outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
 
-      // 2) 영상 그리기
-      handCtx.drawImage(video, 0, 0, handCanvas.width, handCanvas.height);
-
-      // 3) 손가락 랜드마크 표식
+      // 2) 손가락 랜드마크 표식
       if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         for (const landmarks of results.multiHandLandmarks) {
-          // 연결선 (옵션: 꼭 필요한 경우에만)
-          window.drawConnectors(handCtx, landmarks, window.HAND_CONNECTIONS, {
+          // 연결선
+          window.drawConnectors(outputCtx, landmarks, window.HAND_CONNECTIONS, {
             color: '#FFFFFF',
             lineWidth: 2
           });
           // 관절 포인트
-          window.drawLandmarks(handCtx, landmarks, {
+          window.drawLandmarks(outputCtx, landmarks, {
             color: '#FF0000',
             lineWidth: 1,
             radius: 2
           });
 
-          // 예: 검지 손가락 끝 (랜드마크 index: 8)에 큰 원
+          // 검지 손가락 끝 (랜드마크 index: 8)에 큰 원
           const indexTip = landmarks[8];
-          const x = indexTip.x * handCanvas.width;
-          const y = indexTip.y * handCanvas.height;
+          const x = indexTip.x * outputCanvas.width;
+          const y = indexTip.y * outputCanvas.height;
 
-          handCtx.beginPath();
-          handCtx.arc(x, y, 8, 0, 2 * Math.PI);
-          handCtx.fillStyle = 'red';
-          handCtx.fill();
-          handCtx.strokeStyle = 'white';
-          handCtx.lineWidth = 2;
-          handCtx.stroke();
+          outputCtx.beginPath();
+          outputCtx.arc(x, y, 8, 0, 2 * Math.PI);
+          outputCtx.fillStyle = 'red';
+          outputCtx.fill();
+          outputCtx.strokeStyle = 'white';
+          outputCtx.lineWidth = 2;
+          outputCtx.stroke();
         }
       }
+    }
+
+    /********************************************************
+     * 얼굴 인식 결과 처리 및 고양이 수염 그리기
+     ********************************************************/
+    function onFaceResults(results) {
+      // 현재 모드가 고양이가 아니면 무시
+      if (currentMode !== 'cat') return;
+      
+      // 1) 내부 캔버스(640x480) 초기화
+      outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+
+      // 얼굴이 감지된 경우에만 수염 그리기
+      if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+        const landmarks = results.multiFaceLandmarks[0]; // 첫 번째 얼굴의 랜드마크
+        
+        // 얼굴 너비 측정 (귀 사이 거리)
+        const leftEar = landmarks[234]; // 왼쪽 귀 랜드마크
+        const rightEar = landmarks[454]; // 오른쪽 귀 랜드마크
+        
+        const leftX = leftEar.x * outputCanvas.width;
+        const rightX = rightEar.x * outputCanvas.width;
+        const faceWidth = Math.abs(rightX - leftX);
+        
+        // 코 끝 랜드마크 (4번)
+        const noseTip = landmarks[4];
+        const noseX = noseTip.x * outputCanvas.width;
+        const noseY = noseTip.y * outputCanvas.height;
+        
+        // 왼쪽 볼 랜드마크 (정확히 MediaPipe에서는 50번 주변)
+        const leftCheek = landmarks[50];
+        const leftCheekX = leftCheek.x * outputCanvas.width;
+        const leftCheekY = leftCheek.y * outputCanvas.height;
+        
+        // 오른쪽 볼 랜드마크 (정확히 MediaPipe에서는 280번 주변)
+        const rightCheek = landmarks[280];
+        const rightCheekX = rightCheek.x * outputCanvas.width;
+        const rightCheekY = rightCheek.y * outputCanvas.height;
+        
+        // 수염 길이와 굵기 계산 (얼굴 크기에 비례)
+        const whiskerLength = faceWidth * 0.15;
+        const whiskerWidth = Math.max(1, faceWidth * 0.005);
+        
+        // 고양이 수염 그리기
+        drawCatWhiskers(noseX, noseY, leftCheekX, leftCheekY, rightCheekX, rightCheekY, whiskerLength, whiskerWidth);
+        
+        // 고양이 코 그리기
+        drawCatNose(noseX, noseY, faceWidth * 0.05);
+      }
+    }
+    
+    /********************************************************
+     * 고양이 수염 그리기 함수
+     ********************************************************/
+    function drawCatWhiskers(noseX, noseY, leftX, leftY, rightX, rightY, length, width) {
+      // 수염 스타일 설정
+      outputCtx.strokeStyle = 'white';
+      outputCtx.lineWidth = width;
+      outputCtx.lineCap = 'round';
+      
+      // 왼쪽 수염 3개
+      for (let i = -1; i <= 1; i++) {
+        const startX = leftX;
+        const startY = leftY + (i * length * 0.4);
+        const endX = startX - length;
+        const endY = startY + (i * length * 0.2);
+        
+        outputCtx.beginPath();
+        outputCtx.moveTo(startX, startY);
+        // 수염을 약간 곡선으로 그리기
+        outputCtx.bezierCurveTo(
+          startX - length * 0.3, startY + (i * length * 0.1),
+          startX - length * 0.7, startY + (i * length * 0.15),
+          endX, endY
+        );
+        outputCtx.stroke();
+      }
+      
+      // 오른쪽 수염 3개
+      for (let i = -1; i <= 1; i++) {
+        const startX = rightX;
+        const startY = rightY + (i * length * 0.4);
+        const endX = startX + length;
+        const endY = startY + (i * length * 0.2);
+        
+        outputCtx.beginPath();
+        outputCtx.moveTo(startX, startY);
+        // 수염을 약간 곡선으로 그리기
+        outputCtx.bezierCurveTo(
+          startX + length * 0.3, startY + (i * length * 0.1),
+          startX + length * 0.7, startY + (i * length * 0.15),
+          endX, endY
+        );
+        outputCtx.stroke();
+      }
+    }
+    
+    /********************************************************
+     * 고양이 코 그리기 함수
+     ********************************************************/
+    function drawCatNose(x, y, size) {
+      // 코 위치 (약간 위로 조정)
+      const noseY = y - size * 0.5;
+      
+      // 검은색 삼각형 코
+      outputCtx.fillStyle = 'black';
+      outputCtx.beginPath();
+      outputCtx.moveTo(x, noseY);
+      outputCtx.lineTo(x - size * 0.6, noseY + size);
+      outputCtx.lineTo(x + size * 0.6, noseY + size);
+      outputCtx.closePath();
+      outputCtx.fill();
+      
+      // 테두리 추가
+      outputCtx.strokeStyle = '#333';
+      outputCtx.lineWidth = 1;
+      outputCtx.stroke();
     }
   </script>
 </body>
