@@ -270,7 +270,7 @@
 
       faceMesh.setOptions({
         maxNumFaces: 1,
-        refineLandmarks: false,
+        refineLandmarks: true,  // 랜드마크 정확도 향상을 위해 true로 설정
         minDetectionConfidence: 0.5,
         minTrackingConfidence: 0.5
       });
@@ -284,6 +284,7 @@
       
       isFaceModelLoaded = true;
       updateStatus('얼굴 모델 로드 완료', true);
+      console.log('얼굴 모델 로드 완료!');
       
       // 현재 모드가 고양이면 활성화
       if (currentMode === 'cat') {
@@ -395,42 +396,67 @@
       // 1) 내부 캔버스(640x480) 초기화
       outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
 
-      // 얼굴이 감지된 경우에만 수염 그리기
-      if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+      // 디버깅: 얼굴 인식 상태 표시
+      if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+        // 얼굴이 감지되지 않으면 상태 표시
+        outputCtx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+        outputCtx.fillRect(10, 10, 20, 20);
+        outputCtx.fillStyle = 'white';
+        outputCtx.font = '16px Arial';
+        outputCtx.fillText('얼굴이 감지되지 않음', 40, 25);
+        return;
+      }
+
+      // 얼굴이 감지된 경우 녹색 표시 및 수염 그리기
+      outputCtx.fillStyle = 'rgba(0, 255, 0, 0.5)';
+      outputCtx.fillRect(10, 10, 20, 20);
+      
+      try {
         const landmarks = results.multiFaceLandmarks[0]; // 첫 번째 얼굴의 랜드마크
         
         // 얼굴 너비 측정 (귀 사이 거리)
-        const leftEar = landmarks[234]; // 왼쪽 귀 랜드마크
-        const rightEar = landmarks[454]; // 오른쪽 귀 랜드마크
+        // 모바일에서 더 잘 작동하는 랜드마크 지점 선택 (눈 외곽 지점)
+        const leftEye = landmarks[33]; // 왼쪽 눈 외곽
+        const rightEye = landmarks[263]; // 오른쪽 눈 외곽
         
-        const leftX = leftEar.x * outputCanvas.width;
-        const rightX = rightEar.x * outputCanvas.width;
-        const faceWidth = Math.abs(rightX - leftX);
+        const leftX = leftEye.x * outputCanvas.width;
+        const rightX = rightEye.x * outputCanvas.width;
+        const faceWidth = Math.abs(rightX - leftX) * 3; // 눈 간격의 약 3배가 얼굴 너비
         
-        // 코 끝 랜드마크 (4번)
-        const noseTip = landmarks[4];
+        // 코 끝 랜드마크 (1번 또는 4번)
+        const noseTip = landmarks[1]; // 모바일에서 더 안정적인 코 랜드마크 선택
         const noseX = noseTip.x * outputCanvas.width;
         const noseY = noseTip.y * outputCanvas.height;
         
-        // 왼쪽 볼 랜드마크 (정확히 MediaPipe에서는 50번 주변)
-        const leftCheek = landmarks[50];
+        // 왼쪽/오른쪽 볼 랜드마크 (더 안정적인 지점 선택)
+        const leftCheek = landmarks[116]; // 왼쪽 볼 부근의 랜드마크
         const leftCheekX = leftCheek.x * outputCanvas.width;
         const leftCheekY = leftCheek.y * outputCanvas.height;
         
-        // 오른쪽 볼 랜드마크 (정확히 MediaPipe에서는 280번 주변)
-        const rightCheek = landmarks[280];
+        const rightCheek = landmarks[345]; // 오른쪽 볼 부근의 랜드마크
         const rightCheekX = rightCheek.x * outputCanvas.width;
         const rightCheekY = rightCheek.y * outputCanvas.height;
         
         // 수염 길이와 굵기 계산 (얼굴 크기에 비례)
-        const whiskerLength = faceWidth * 0.15;
-        const whiskerWidth = Math.max(1, faceWidth * 0.005);
+        const whiskerLength = faceWidth * 0.2; // 더 긴 수염
+        const whiskerWidth = Math.max(2, faceWidth * 0.01); // 더 굵은 수염 (최소 2픽셀)
         
         // 고양이 수염 그리기
         drawCatWhiskers(noseX, noseY, leftCheekX, leftCheekY, rightCheekX, rightCheekY, whiskerLength, whiskerWidth);
         
         // 고양이 코 그리기
-        drawCatNose(noseX, noseY, faceWidth * 0.05);
+        drawCatNose(noseX, noseY, faceWidth * 0.07); // 더 큰 코 (가시성 향상)
+        
+        // 디버깅 정보 표시
+        outputCtx.fillStyle = 'white';
+        outputCtx.font = '12px Arial';
+        outputCtx.fillText(`얼굴 너비: ${faceWidth.toFixed(0)}px`, 40, 25);
+      } catch (error) {
+        console.error("얼굴 랜드마크 처리 오류:", error);
+        // 오류 표시
+        outputCtx.fillStyle = 'white';
+        outputCtx.font = '14px Arial';
+        outputCtx.fillText('랜드마크 처리 오류: ' + error.message, 40, 45);
       }
     }
     
@@ -438,8 +464,7 @@
      * 고양이 수염 그리기 함수
      ********************************************************/
     function drawCatWhiskers(noseX, noseY, leftX, leftY, rightX, rightY, length, width) {
-      // 수염 스타일 설정
-      outputCtx.strokeStyle = 'white';
+      // 수염 스타일 설정 - 더 잘 보이도록 검은색 테두리가 있는 흰색 수염
       outputCtx.lineWidth = width;
       outputCtx.lineCap = 'round';
       
@@ -450,9 +475,23 @@
         const endX = startX - length;
         const endY = startY + (i * length * 0.2);
         
+        // 검은색 테두리 먼저 그리기 (더 두껍게)
+        outputCtx.strokeStyle = 'black';
+        outputCtx.lineWidth = width + 2;
         outputCtx.beginPath();
         outputCtx.moveTo(startX, startY);
-        // 수염을 약간 곡선으로 그리기
+        outputCtx.bezierCurveTo(
+          startX - length * 0.3, startY + (i * length * 0.1),
+          startX - length * 0.7, startY + (i * length * 0.15),
+          endX, endY
+        );
+        outputCtx.stroke();
+        
+        // 그 위에 흰색 수염 그리기
+        outputCtx.strokeStyle = 'white';
+        outputCtx.lineWidth = width;
+        outputCtx.beginPath();
+        outputCtx.moveTo(startX, startY);
         outputCtx.bezierCurveTo(
           startX - length * 0.3, startY + (i * length * 0.1),
           startX - length * 0.7, startY + (i * length * 0.15),
@@ -468,9 +507,23 @@
         const endX = startX + length;
         const endY = startY + (i * length * 0.2);
         
+        // 검은색 테두리 먼저 그리기 (더 두껍게)
+        outputCtx.strokeStyle = 'black';
+        outputCtx.lineWidth = width + 2;
         outputCtx.beginPath();
         outputCtx.moveTo(startX, startY);
-        // 수염을 약간 곡선으로 그리기
+        outputCtx.bezierCurveTo(
+          startX + length * 0.3, startY + (i * length * 0.1),
+          startX + length * 0.7, startY + (i * length * 0.15),
+          endX, endY
+        );
+        outputCtx.stroke();
+        
+        // 그 위에 흰색 수염 그리기
+        outputCtx.strokeStyle = 'white';
+        outputCtx.lineWidth = width;
+        outputCtx.beginPath();
+        outputCtx.moveTo(startX, startY);
         outputCtx.bezierCurveTo(
           startX + length * 0.3, startY + (i * length * 0.1),
           startX + length * 0.7, startY + (i * length * 0.15),
@@ -487,8 +540,17 @@
       // 코 위치 (약간 위로 조정)
       const noseY = y - size * 0.5;
       
+      // 그림자 효과 (약간 오프셋)
+      outputCtx.fillStyle = 'rgba(0,0,0,0.5)';
+      outputCtx.beginPath();
+      outputCtx.moveTo(x + 2, noseY + 2);
+      outputCtx.lineTo(x - size * 0.6 + 2, noseY + size + 2);
+      outputCtx.lineTo(x + size * 0.6 + 2, noseY + size + 2);
+      outputCtx.closePath();
+      outputCtx.fill();
+      
       // 검은색 삼각형 코
-      outputCtx.fillStyle = 'black';
+      outputCtx.fillStyle = '#000000';
       outputCtx.beginPath();
       outputCtx.moveTo(x, noseY);
       outputCtx.lineTo(x - size * 0.6, noseY + size);
@@ -496,12 +558,17 @@
       outputCtx.closePath();
       outputCtx.fill();
       
-      // 테두리 추가
-      outputCtx.strokeStyle = '#333';
-      outputCtx.lineWidth = 1;
+      // 테두리 추가 (더 두껍게)
+      outputCtx.strokeStyle = '#FFFFFF';
+      outputCtx.lineWidth = 2;
       outputCtx.stroke();
+      
+      // 코 위에 빛 반사 효과 (반짝임)
+      outputCtx.fillStyle = 'rgba(255,255,255,0.7)';
+      outputCtx.beginPath();
+      outputCtx.arc(x - size * 0.2, noseY + size * 0.3, size * 0.15, 0, Math.PI * 2);
+      outputCtx.fill();
     }
   </script>
 </body>
 </html>
-
